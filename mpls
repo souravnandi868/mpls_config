@@ -1,0 +1,79 @@
+! Hostname and basic identity
+hostname PE1
+ip domain-name mpls.lab
+
+! Enable necessary features
+ip cef
+mpls ip
+
+! Configure Loopbacks
+interface Loopback0
+ ip address 1.1.1.1 255.255.255.255
+!
+interface Loopback100
+ ip address 10.10.10.1 255.255.255.255
+!
+
+! Core-facing interface
+interface GigabitEthernet0/0
+ description MPLS Core Link
+ ip address 192.168.0.1 255.255.255.0
+ mpls ip
+!
+
+! CE-facing interface (VRF attached)
+interface GigabitEthernet0/1
+ description CustomerA Connection
+ ip vrf forwarding CUSTOMER_A
+ ip address 172.16.1.1 255.255.255.0
+!
+
+! Define VRF for Customer A
+ip vrf CUSTOMER_A
+ rd 100:1
+ route-target export 100:1
+ route-target import 100:1
+!
+
+! Configure OSPF as IGP
+router ospf 100
+ router-id 1.1.1.1
+ network 192.168.0.0 0.0.0.255 area 0
+ network 1.1.1.1 0.0.0.0 area 0
+ network 10.10.10.1 0.0.0.0 area 0
+ mpls ldp autoconfig
+!
+
+! Configure LDP
+mpls label protocol ldp
+mpls ldp router-id Loopback0 force
+
+! BGP for VPNv4/MPLS
+router bgp 65001
+ bgp log-neighbor-changes
+ bgp router-id 1.1.1.1
+ no bgp default ipv4-unicast
+ neighbor 2.2.2.2 remote-as 65001
+ neighbor 2.2.2.2 update-source Loopback0
+ neighbor 2.2.2.2 send-community both
+ neighbor 2.2.2.2 activate
+ address-family vpnv4
+  neighbor 2.2.2.2 activate
+  neighbor 2.2.2.2 send-community both
+ exit-address-family
+
+! BGP VRF config for Customer A
+address-family ipv4 vrf CUSTOMER_A
+ redistribute connected
+ network 172.16.1.0 mask 255.255.255.0
+exit-address-family
+
+! MPLS forwarding on all relevant interfaces
+mpls ip
+
+! Enable MPLS for VPN routing
+ip route vrf CUSTOMER_A 0.0.0.0 0.0.0.0 172.16.1.254
+
+! Optional: Logging and diagnostics
+logging buffered 51200 warnings
+no logging console
